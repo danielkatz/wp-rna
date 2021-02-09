@@ -1,26 +1,14 @@
-import yargs, { Arguments, Argv } from "yargs";
-import yargsParser from "yargs-parser";
-import { CommonArgs } from "./src/commands/CommonArgs";
+import yargs, { Argv } from "yargs";
+import { ManifestCommand } from "./src/commands/ManifestCommand";
 import { ScaffoldCommand } from "./src/commands/ScaffoldCommand";
-import { LoggingService } from "./src/LoggingService";
-
-const defaultArgs: CommonArgs = {
-    pretty: false,
-    verbose: false,
-};
-
-let loggingService = new LoggingService();
 
 async function main() {
-    const parsed = yargsParser(process.argv) as (Arguments & CommonArgs);
-    const args = Object.assign({}, defaultArgs, parsed);
-
-    loggingService = new LoggingService(args);
-
-    const scaffoldCommand = new ScaffoldCommand(loggingService);
+    const scaffoldCommand = new ScaffoldCommand();
+    const manifestCommand = new ManifestCommand();
 
     yargs
         .command(scaffoldCommand)
+        .command(manifestCommand)
         .demandCommand()
         .help()
         .showHelpOnFail(true, "Specify --help for available options")
@@ -29,18 +17,16 @@ async function main() {
 }
 
 function handleError(msg: string, error?: Error, yargs?: Argv) {
-    const logger = loggingService.createLogger();
-
     if (error) {
         if (error instanceof Error) {
-            logger.error(error.message, { error });
+            console.error(error.message, { error });
         } else {
-            logger.error(error);
+            console.error(error);
         }
     } else if (msg) {
-        logger.error(msg);
+        console.error(msg);
     } else {
-        logger.error("Unknown error");
+        console.error("Unknown error");
     }
 
     process.exit(1);

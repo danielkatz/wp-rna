@@ -3,6 +3,4 @@ type LooseArgs = {
 };
 
 export type CommonArgs = LooseArgs & {
-    pretty: boolean,
-    verbose: boolean,
 }
