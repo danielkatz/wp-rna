@@ -4,11 +4,14 @@ export interface WordPressManifest {
     themes: WordPressComponentDefinition[],
 }
 
-export interface WordPressCoreDefinition {
+export interface WordPressVersionDefinition {
     version: string,
+    versionType: "strict" | "range"
 }
 
-export interface WordPressComponentDefinition {
+export interface WordPressCoreDefinition extends WordPressVersionDefinition {
+}
+
+export interface WordPressComponentDefinition extends WordPressVersionDefinition {
     slug: string,
-    version: string,
 }

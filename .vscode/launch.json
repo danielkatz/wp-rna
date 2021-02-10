@@ -16,11 +16,10 @@
             "args": [
                 "${workspaceFolder}/index.ts",
                 "scaffold",
+                "-wp",
                 "5.6",
-                "--plugins",
-                "elementor",
                 "--themes",
-                "hello-elementor",
+                "twentytwenty:1.5",
                 "--dest",
                 "/tmp/wp",
                 "--pretty"

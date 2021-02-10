@@ -27,7 +27,7 @@ export class ScaffoldCommand extends BaseCommand<ScaffoldCommandArgs> {
             })
             .option("wp", {
                 type: "string",
-                default: "latest",
+                default: ">=0.0.0",
             })
             .option("plugins", {
                 type: "array",
@@ -57,16 +57,18 @@ export class ScaffoldCommand extends BaseCommand<ScaffoldCommandArgs> {
     private getManifestFromArgs(args: ScaffoldCommandArgs): WordPressManifest {
         const manifest: WordPressManifest = {
             wordpress: {
-                version: "latest",
+                version: ">=0.0.0",
+                versionType: "range",
             },
             plugins: [],
             themes: [],
         };
 
-        if (args.wp && args.wp !== "latest") {
+        if (args.wp) {
             const validRange = semverValidRange(args.wp);
             if (validRange) {
                 manifest.wordpress.version = validRange;
+                manifest.wordpress.versionType = "range";
             }
             else {
                 throw new Error(`--version '${args.ver}' is not a valid version`);
@@ -96,13 +98,15 @@ export class ScaffoldCommand extends BaseCommand<ScaffoldCommandArgs> {
 
         const component: WordPressComponentDefinition = {
             slug: name,
-            version: "latest",
+            version: ">=0.0.0",
+            versionType: "range",
         }
 
-        if (version && version !== "latest") {
+        if (version) {
             const validRange = semverValidRange(version);
             if (validRange) {
                 component.version = validRange;
+                component.versionType = "range";
             }
             else {
                 throw new Error(`invalid version '${version}' for component '${name}'`);

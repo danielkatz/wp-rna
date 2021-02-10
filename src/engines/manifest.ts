@@ -12,6 +12,7 @@ export async function extractManifest(target: string) {
     const definition: WordPressManifest = {
         wordpress: {
             version: wordpressVersion,
+            versionType: "strict",
         },
         plugins: [],
         themes: [],
@@ -71,11 +72,12 @@ async function readPluginDefinition(pluginsFolder: string, slug: string): Promis
             return {
                 slug,
                 version,
+                versionType: "strict",
             };
         }
     }
 
-    return { slug, version: "unknown" };
+    return { slug, version: "unknown", versionType: "strict" };
 }
 
 async function readThemeDefinition(themesFolder: string, slug: string): Promise<WordPressComponentDefinition> {
@@ -91,10 +93,11 @@ async function readThemeDefinition(themesFolder: string, slug: string): Promise<
         return {
             slug,
             version,
+            versionType: "strict",
         };
     }
 
-    return { slug, version: "unknown" };
+    return { slug, version: "unknown", versionType: "strict" };
 }
 
 async function listFilesOfType(location: string, fileExtension: string) {

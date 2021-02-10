@@ -7,7 +7,7 @@ import semver, { SemVer } from "semver";
 import maxSatisfying from "semver/ranges/max-satisfying";
 import extract from "extract-zip";
 import { PluginInfo, ThemeInfo, VersionCheck } from "../types/WordPressOrg";
-import { WordPressComponentDefinition, WordPressManifest } from "../types/WordPressManifest";
+import { WordPressComponentDefinition, WordPressManifest, WordPressVersionDefinition } from "../types/WordPressManifest";
 
 const streamPipeline = promisify(pipeline);
 
@@ -19,25 +19,23 @@ export async function scaffold(manifest: WordPressManifest, destination: string)
 
 async function resolveVersionRanges(manifest: WordPressManifest): Promise<WordPressManifest> {
     const wordpressVersions = await getWordpressVersions();
-    const wordpressVersion = findBestWordpressVersion(manifest.wordpress.version, wordpressVersions);
+    const wordpressVersion = findBestWordpressVersion(manifest.wordpress, wordpressVersions);
 
     const resolvedManifest: WordPressManifest = {
-        wordpress: {
-            version: wordpressVersion,
-        },
+        wordpress: wordpressVersion,
         plugins: [],
         themes: [],
     };
 
     for (const pluginMetadata of manifest.plugins) {
         const pluginInfo = await getPluginInfo(pluginMetadata.slug);
-        const pluginSource = findBestPluginVersion(pluginMetadata.version, pluginInfo);
+        const pluginSource = findBestPluginVersion(pluginMetadata, pluginInfo);
         resolvedManifest.plugins.push(pluginSource);
     }
 
     for (const themeMetadata of manifest.themes) {
         const themeInfo = await getThemeInfo(themeMetadata.slug);
-        const themeSource = findBestThemeVersion(themeMetadata.version, themeInfo);
+        const themeSource = findBestThemeVersion(themeMetadata, themeInfo);
         resolvedManifest.themes.push(themeSource);
     }
 
@@ -106,61 +104,57 @@ async function extractZip(file: string, dest: string) {
     await extract(file, { dir: dest });
 }
 
-function findBestWordpressVersion(range: string | undefined, versions: VersionCheck.Response): string {
-    const specificVersion = semver.valid(range);
-    if (specificVersion) {
-        return specificVersion;
+function resolveVersion(unresolved: WordPressVersionDefinition, versions: string[]): WordPressVersionDefinition | null {
+    if (unresolved.versionType === "strict") {
+        return unresolved;
     }
 
-    const unique = [... new Set<SemVer>(versions.offers.map(x => semver.coerce(x.version)!))];
-    const ver = maxSatisfying(unique, range || ">=0.0.0");
+    const available = versions.map(x => semver.coerce(x)).filter(x => x !== null) as SemVer[];
+    const version = maxSatisfying(available, unresolved.version);
 
-    if (ver === null) {
-        throw Error(`No version of wordpress matches the range '${range}'`);
-    }
-
-    return ver.format();
-}
-
-function findBestPluginVersion(range: string, info: PluginInfo.Response): WordPressComponentDefinition {
-    let version = semver.valid(range);
-
-    if (!version) {
-        const unique = Object.getOwnPropertyNames(info.versions);
-
-        version = (range === "latest")
-            ? maxSatisfying(unique, ">=0.0.0")
-            : maxSatisfying(unique, range);
-
-        if (version === null) {
-            throw Error(`No version of ${info.slug} matches the range '${range}'`);
-        }
+    if (version === null) {
+        return null;
     }
 
     return {
-        slug: info.slug,
-        version: version,
+        version: version.raw,
+        versionType: "strict",
     };
 }
 
-function findBestThemeVersion(range: string, info: ThemeInfo.Response): WordPressComponentDefinition {
-    let version = semver.valid(range);
+function findBestWordpressVersion(unresolved: WordPressVersionDefinition, versions: VersionCheck.Response): WordPressVersionDefinition {
+    const resolved = resolveVersion(unresolved, versions.offers.map(x => x.version));
 
-    if (!version) {
-        const unique = Object.getOwnPropertyNames(info.versions);
+    if (resolved === null) {
+        throw Error(`No version of wordpress matches the range '${unresolved.version}'`);
+    }
 
-        version = (range === "latest")
-            ? maxSatisfying(unique, ">=0.0.0")
-            : maxSatisfying(unique, range);
+    return resolved;
+}
 
-        if (version === null) {
-            throw Error(`No version of ${info.slug} matches the range '${range}'`);
-        }
+function findBestPluginVersion(unresolved: WordPressVersionDefinition, info: PluginInfo.Response): WordPressComponentDefinition {
+    const resolved = resolveVersion(unresolved, Object.getOwnPropertyNames(info.versions));
+
+    if (resolved === null) {
+        throw Error(`No version of ${info.slug} matches the range '${unresolved.version}'`);
     }
 
     return {
         slug: info.slug,
-        version: version,
+        ...resolved
+    };
+}
+
+function findBestThemeVersion(unresolved: WordPressVersionDefinition, info: ThemeInfo.Response): WordPressComponentDefinition {
+    const resolved = resolveVersion(unresolved, Object.getOwnPropertyNames(info.versions));
+
+    if (resolved === null) {
+        throw Error(`No version of ${info.slug} matches the range '${unresolved.version}'`);
+    }
+
+    return {
+        slug: info.slug,
+        ...resolved
     };
 }
 
