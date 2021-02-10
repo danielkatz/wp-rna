@@ -1,23 +1,31 @@
 import { Argv } from "yargs";
-import { WordPressMetadata, WordPressComponentMetadata, scaffold } from "../engines/scaffold";
+import * as yaml from "js-yaml";
+import { promises as fs } from "fs";
+import { scaffold } from "../engines/scaffold";
 import { BaseCommand } from "./BaseCommand";
 import { CommonArgs } from "./CommonArgs";
 import semverValidRange from "semver/ranges/valid";
+import { WordPressComponentDefinition, WordPressManifest } from "../types/WordPressManifest";
 
 type ScaffoldCommandArgs = CommonArgs & {
-    ver: string,
+    file: string,
+    wp: string,
     plugins: string[],
     themes: string[],
     dest: string,
 }
 
 export class ScaffoldCommand extends BaseCommand<ScaffoldCommandArgs> {
-    public readonly command: string = "scaffold <ver>";
+    public readonly command: string = "scaffold";
     public readonly describe: string = "Scaffold a fresh wordpress filesystem";
 
     builder(yargs: Argv): Argv {
         return yargs
-            .positional("ver", {
+            .option("file", {
+                alias: "f",
+                type: "string",
+            })
+            .option("wp", {
                 type: "string",
                 default: "latest",
             })
@@ -34,15 +42,31 @@ export class ScaffoldCommand extends BaseCommand<ScaffoldCommandArgs> {
     }
 
     async action(args: ScaffoldCommandArgs): Promise<void> {
-        const metadata: WordPressMetadata = {
+        const manifest = (args.file)
+            ? await this.loadManifestFromFile(args)
+            : this.getManifestFromArgs(args);
+
+        await scaffold(manifest, args.dest);
+    }
+
+    private async loadManifestFromFile(args: ScaffoldCommandArgs): Promise<WordPressManifest> {
+        const yml = await fs.readFile(args.file, "utf-8");
+        return yaml.load(yml) as WordPressManifest;
+    }
+
+    private getManifestFromArgs(args: ScaffoldCommandArgs): WordPressManifest {
+        const manifest: WordPressManifest = {
+            wordpress: {
+                version: "latest",
+            },
             plugins: [],
             themes: [],
         };
 
-        if (args.ver && args.ver !== "latest") {
-            const validRange = semverValidRange(args.ver);
+        if (args.wp && args.wp !== "latest") {
+            const validRange = semverValidRange(args.wp);
             if (validRange) {
-                metadata.version = validRange;
+                manifest.wordpress.version = validRange;
             }
             else {
                 throw new Error(`--version '${args.ver}' is not a valid version`);
@@ -52,26 +76,27 @@ export class ScaffoldCommand extends BaseCommand<ScaffoldCommandArgs> {
         if (args.plugins) {
             for (const plugin of args.plugins) {
                 const component = this.parseComponent(plugin);
-                metadata.plugins.push(component);
+                manifest.plugins.push(component);
             }
         }
 
         if (args.themes) {
             for (const theme of args.themes) {
                 const component = this.parseComponent(theme);
-                metadata.themes.push(component);
+                manifest.themes.push(component);
             }
         }
 
-        await scaffold(metadata, args.dest);
+        return manifest;
     }
 
-    private parseComponent(componentString: string): WordPressComponentMetadata {
+    private parseComponent(componentString: string): WordPressComponentDefinition {
         const [name, version] = componentString.split(":");
         if (name.length === 0) throw new Error(`component name cannot be an empty string`);
 
-        const component: WordPressComponentMetadata = {
+        const component: WordPressComponentDefinition = {
             slug: name,
+            version: "latest",
         }
 
         if (version && version !== "latest") {

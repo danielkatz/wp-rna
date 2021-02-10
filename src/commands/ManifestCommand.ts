@@ -34,7 +34,7 @@ export class ManifestCommand extends BaseCommand<ManifestCommandArgs> {
         if (args.output === "yaml") {
             console.log(yaml.dump(manifest));
         } else {
-            console.log(manifest);
+            console.log(JSON.stringify(manifest, null, 2));
         }
     }
 }

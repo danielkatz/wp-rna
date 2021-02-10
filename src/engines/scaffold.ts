@@ -7,67 +7,52 @@ import semver, { SemVer } from "semver";
 import maxSatisfying from "semver/ranges/max-satisfying";
 import extract from "extract-zip";
 import { PluginInfo, ThemeInfo, VersionCheck } from "../types/WordPressOrg";
+import { WordPressComponentDefinition, WordPressManifest } from "../types/WordPressManifest";
 
 const streamPipeline = promisify(pipeline);
 
-export interface WordPressComponentMetadata {
-    slug: string,
-    version?: string,
+export async function scaffold(manifest: WordPressManifest, destination: string) {
+    const resolvedManifest = await resolveVersionRanges(manifest);
+
+    await scaffoldWordpress(resolvedManifest, destination);
 }
 
-export interface WordPressMetadata {
-    version?: string,
-    plugins: WordPressComponentMetadata[],
-    themes: WordPressComponentMetadata[],
-}
-
-export interface WordPressSource {
-    version: string,
-    ref: string,
-    plugins: WordPressComponentSource[],
-    themes: WordPressComponentSource[],
-}
-
-export interface WordPressComponentSource {
-    slug: string,
-    version: string,
-    ref: string,
-}
-
-export async function scaffold(metadata: WordPressMetadata, destination: string) {
+async function resolveVersionRanges(manifest: WordPressManifest): Promise<WordPressManifest> {
     const wordpressVersions = await getWordpressVersions();
-    const wordpressVersion = findBestWordpressVersion(metadata.version, wordpressVersions);
+    const wordpressVersion = findBestWordpressVersion(manifest.wordpress.version, wordpressVersions);
 
-    const resolvedMetadata: WordPressSource = {
-        version: wordpressVersion,
-        ref: `https://downloads.wordpress.org/release/wordpress-${wordpressVersion}-no-content.zip`,
+    const resolvedManifest: WordPressManifest = {
+        wordpress: {
+            version: wordpressVersion,
+        },
         plugins: [],
         themes: [],
     };
 
-    for (const pluginMetadata of metadata.plugins) {
+    for (const pluginMetadata of manifest.plugins) {
         const pluginInfo = await getPluginInfo(pluginMetadata.slug);
         const pluginSource = findBestPluginVersion(pluginMetadata.version, pluginInfo);
-        resolvedMetadata.plugins.push(pluginSource);
+        resolvedManifest.plugins.push(pluginSource);
     }
 
-    for (const themeMetadata of metadata.themes) {
+    for (const themeMetadata of manifest.themes) {
         const themeInfo = await getThemeInfo(themeMetadata.slug);
         const themeSource = findBestThemeVersion(themeMetadata.version, themeInfo);
-        resolvedMetadata.themes.push(themeSource);
+        resolvedManifest.themes.push(themeSource);
     }
 
-    await scaffoldWordpress(resolvedMetadata, destination);
+    return resolvedManifest;
 }
 
-async function scaffoldWordpress(source: WordPressSource, destination: string) {
+async function scaffoldWordpress(resolvedManifest: WordPressManifest, destination: string) {
     const temp = await fs.mkdtemp("scaffold-");
     console.log(`Created temp dir: ${temp}`);
 
     try {
-        const wordpressZip = path.join(temp, `wordpress-${source.version}.zip`);
+        const wordpressZip = path.join(temp, `wordpress-${resolvedManifest.wordpress.version}.zip`);
+        const wordpressDownloadUrl = `https://downloads.wordpress.org/release/wordpress-${resolvedManifest.wordpress.version}-no-content.zip`;
 
-        await downloadFile(source.ref, wordpressZip);
+        await downloadFile(wordpressDownloadUrl, wordpressZip);
         await extractZip(wordpressZip, destination);
 
         await fs.mkdir(path.join(destination, "wordpress/wp-content"));
@@ -80,21 +65,23 @@ async function scaffoldWordpress(source: WordPressSource, destination: string) {
         await fs.mkdir(themesFolder);
         await fs.mkdir(uploadsFolder);
 
-        for (const plugin of source.plugins) {
+        for (const plugin of resolvedManifest.plugins) {
             const pluginZip = path.join(temp, `${plugin.slug}-${plugin.version}.zip`);
+            const pluginDownloadUrl = `https://downloads.wordpress.org/plugin/${plugin.slug}.${plugin.version}.zip`;
 
-            await downloadFile(plugin.ref, pluginZip);
+            await downloadFile(pluginDownloadUrl, pluginZip);
             await extractZip(pluginZip, pluginsFolder);
         }
 
-        for (const theme of source.themes) {
+        for (const theme of resolvedManifest.themes) {
             const themeZip = path.join(temp, `${theme.slug}-${theme.version}.zip`);
+            const themeDownloadUrl = `https://downloads.wordpress.org/theme/${theme.slug}.${theme.version}.zip`;
 
-            await downloadFile(theme.ref, themeZip);
+            await downloadFile(themeDownloadUrl, themeZip);
             await extractZip(themeZip, themesFolder);
         }
 
-        console.log(source);
+        console.log(resolvedManifest);
     } finally {
         await fs.rm(temp, { recursive: true, force: true });
         console.log(`Removed temp dir: ${temp}`);
@@ -135,12 +122,15 @@ function findBestWordpressVersion(range: string | undefined, versions: VersionCh
     return ver.format();
 }
 
-function findBestPluginVersion(range: string | undefined, info: PluginInfo.Response): WordPressComponentSource {
+function findBestPluginVersion(range: string, info: PluginInfo.Response): WordPressComponentDefinition {
     let version = semver.valid(range);
 
     if (!version) {
         const unique = Object.getOwnPropertyNames(info.versions);
-        version = maxSatisfying(unique, range || ">=0.0.0");
+
+        version = (range === "latest")
+            ? maxSatisfying(unique, ">=0.0.0")
+            : maxSatisfying(unique, range);
 
         if (version === null) {
             throw Error(`No version of ${info.slug} matches the range '${range}'`);
@@ -150,16 +140,18 @@ function findBestPluginVersion(range: string | undefined, info: PluginInfo.Respo
     return {
         slug: info.slug,
         version: version,
-        ref: `https://downloads.wordpress.org/plugin/${info.slug}.${version}.zip`,
     };
 }
 
-function findBestThemeVersion(range: string | undefined, info: ThemeInfo.Response): WordPressComponentSource {
+function findBestThemeVersion(range: string, info: ThemeInfo.Response): WordPressComponentDefinition {
     let version = semver.valid(range);
 
     if (!version) {
         const unique = Object.getOwnPropertyNames(info.versions);
-        version = maxSatisfying(unique, range || ">=0.0.0");
+
+        version = (range === "latest")
+            ? maxSatisfying(unique, ">=0.0.0")
+            : maxSatisfying(unique, range);
 
         if (version === null) {
             throw Error(`No version of ${info.slug} matches the range '${range}'`);
@@ -169,7 +161,6 @@ function findBestThemeVersion(range: string | undefined, info: ThemeInfo.Respons
     return {
         slug: info.slug,
         version: version,
-        ref: `https://downloads.wordpress.org/theme/${info.slug}.${version}.zip`,
     };
 }
 
