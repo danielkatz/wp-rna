@@ -7,8 +7,8 @@ async function main() {
     const manifestCommand = new ManifestCommand();
 
     yargs
-        .command(scaffoldCommand)
         .command(manifestCommand)
+        .command(scaffoldCommand)
         .demandCommand()
         .help()
         .showHelpOnFail(true, "Specify --help for available options")
@@ -18,11 +18,7 @@ async function main() {
 
 function handleError(msg: string, error?: Error, yargs?: Argv) {
     if (error) {
-        if (error instanceof Error) {
-            console.error(error.message, { error });
-        } else {
-            console.error(error);
-        }
+        console.error(error);
     } else if (msg) {
         console.error(msg);
     } else {
